@@ -1,5 +1,5 @@
 # Real Time IOT Graph
-Graphs IOT device power and netowrk usage in real time with plotly API.
+Graphs IOT device power and netowrk usage in real time with Plotly API.
 
 # Installation
 ## 0. Dependencies
@@ -15,7 +15,7 @@ pip install -r requirements.txt
 ## You're good to go!
 
 # Running The Real Time Grapher
-## 1. Create a login file named ***loginCredentials*** at the root of the repository
+## 1. Create a login file named `loginCredentials` at the root of the repository
 ```
 vim loginCredentials
 ```
@@ -29,7 +29,7 @@ user
 password
 database
 ```
-En example below
+An example below
 ```
 databasename.asdlfkjoue3.ca-south-4.rds.amazonaws.com
 john
@@ -44,7 +44,7 @@ py realTimeIoTGraph.py
 ```
 Then click on the link provided to open the graph in your browser.
 
-Runnning it should look like this.
+Running it should look like this.
 ![Running the realTimeIoTGraph](images/exampleRun.png)
 
 ### Now, the realTimeIoTGraph should be running in your browser.
@@ -59,10 +59,10 @@ Once you run it, this is what you should see
 
    2. The field next to interval has the format HH:MM:SS. This specifies the window of time displayed in the live graph
 
-3. Time Range is the static graph. It will be grey in live graphhing mode and dark in static mode. You specify any time range in the past that contains logged data, and it will display that time frame in the graph. It will not live update.
+3. Time Range is the static graph. It will be grey in live graphing mode and dark in static mode. You specify any time range in the past that contains logged data, and it will display that time frame in the graph. It will not live update.
 
    4. The text boxes next to the time range consists of the start time, end time, and interval. You only need to specify 2 of the 3 fields. If you specify all 3, then the program will use the start time and interval to calculate the end time.
 
    5. This button updates the static graph after you fill in the text boxes.
 
-6. This check box toggles between interval (live graph mode) and Time Range ()
+6. This check box toggles between interval (live graph) and Time Range (static graph) mode.
