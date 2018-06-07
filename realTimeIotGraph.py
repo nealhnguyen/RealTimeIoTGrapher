@@ -21,7 +21,7 @@ ip = {
     'Chromecast':       '192.168.12.77',
     'Echo Dot 2':       '192.168.12.79',
     'Echo Dot':         '192.168.12.92',
-    'Eufy Genie':       '192.168.12.142',
+    'Eufy Genie':       '192.168.12.145',
     'Eufy Genie 2':     '192.168.12.217',
     'Fire Stick':       '192.168.12.113',
     'Google Home':      '192.168.12.48',
@@ -37,6 +37,13 @@ ip = {
 #corresponding logic to extract necessary strings for dropdowm form our ip device list
 dropdown_options = [{'label': device, 'value': device} for device in sorted(ip.keys())]
 #endregion
+with open('loginCredentials') as loginCredentials:
+    credentials = loginCredentials.read().splitlines()
+
+host = credentials[0]
+user = credentials[1]
+passwd = credentials[2]
+db = credentials[3]
 
 #region Currently Unused Functions
 def power_query(db_connection, device, n):
@@ -147,7 +154,9 @@ def get_power_and_net_traff_in_range(devices, start_time, end_time):
 
     return power, net_traff
 
-def create_figure(devices, power, net_traff):
+def create_figure(prev_fig, devices, power, net_traff):
+    visibilities = {d.get('name'): d.get('visible') for d in prev_fig['data']}
+
     scatter_data = []
     for curr_device in devices:
         # Append power graph
@@ -155,18 +164,21 @@ def create_figure(devices, power, net_traff):
             x = power[curr_device]['time'],
             y = power[curr_device]['power_mw'],
             name = curr_device + ' Power',
+            visible=visibilities.get(curr_device + ' Power') or 'legendonly'
         ))
 
         # Append incoming, outgoing, and total network throughput
         df = net_traff[curr_device]
         for data_direction in ('incoming', 'outgoing', 'total'):
             dev_net_traff_in_dir = df.loc[(df['type'] == data_direction) & (df['time'].notnull())]
-            scatter_data.append(go.Scatter(
-                x = dev_net_traff_in_dir['time'],
-                y = dev_net_traff_in_dir['total_throughput'],
-                name = curr_device + ' ' + data_direction + ' Throughput',
-                yaxis = 'y2'
-            ))
+            if not dev_net_traff_in_dir.empty:
+                scatter_data.append(go.Scatter(
+                    x = dev_net_traff_in_dir['time'],
+                    y = dev_net_traff_in_dir['total_throughput'],
+                    name = curr_device + ' ' + data_direction + ' Throughput',
+                    yaxis = 'y2',
+                    visible=visibilities.get(curr_device + ' Power') or 'legendonly'
+                ))
 
     layout = go.Layout(
         yaxis=dict(title='Power (mW)'),
@@ -280,13 +292,10 @@ def get_time_range(use_time_range, interval, interval2, start_time_range, end_ti
 
 def connect_to_ip_log_db():
     try:
-        with open('loginCredentials') as loginCredentials:
-            credentials = loginCredentials.read().splitlines()
-
-        host = credentials[0]
-        user = credentials[1]
-        passwd = credentials[2]
-        db = credentials[3]
+        #host="ciscoiot3.cdfsxn4jreun.us-west-2.rds.amazonaws.com"
+        #user = "cisco"
+        #passwd ="ciscoIOT985"
+        #db = "ip_log"
         db_connection = sql.connect(host, user, passwd, db)
 
         db_connection.ping(True)
@@ -451,7 +460,7 @@ def update_graph_live(devices, n, use_time_range, clicks, prev_fig, start_time_r
 
     power, net_traff = get_power_and_net_traff_in_range(devices, start_time_range, end_time_range)
 
-    fig = create_figure(devices, power, net_traff)
+    fig = create_figure(prev_fig, devices, power, net_traff)
 
     #if prev_fig: preserve_trace_visibility(prev_fig['data'], fig['data'])
 
