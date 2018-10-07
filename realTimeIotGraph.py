@@ -155,7 +155,9 @@ def get_power_and_net_traff_in_range(devices, start_time, end_time):
     return power, net_traff
 
 def create_figure(prev_fig, devices, power, net_traff):
-    visibilities = {d.get('name'): d.get('visible') for d in prev_fig['data']}
+    #visibilities = {d['name']: d['visible'] for d in prev_fig['data']}
+    #for d in prev_fig['data']:
+    #    print d
 
     scatter_data = []
     for curr_device in devices:
@@ -164,7 +166,7 @@ def create_figure(prev_fig, devices, power, net_traff):
             x = power[curr_device]['time'],
             y = power[curr_device]['power_mw'],
             name = curr_device + ' Power',
-            visible=visibilities.get(curr_device + ' Power') or 'legendonly'
+        #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
         ))
 
         # Append incoming, outgoing, and total network throughput
@@ -177,7 +179,7 @@ def create_figure(prev_fig, devices, power, net_traff):
                     y = dev_net_traff_in_dir['total_throughput'],
                     name = curr_device + ' ' + data_direction + ' Throughput',
                     yaxis = 'y2',
-                    visible=visibilities.get(curr_device + ' Power') or 'legendonly'
+                #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
                 ))
 
     layout = go.Layout(
