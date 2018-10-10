@@ -172,8 +172,8 @@ def create_figure(prev_fig, devices, power, net_traff):
             avgPowerY = [power[curr_device]['power_mw'].mean()]*2
             avgPowerX = [power[curr_device]['time'].iloc[0], power[curr_device]['time'].iloc[-1]]
             scatter_data.append(go.Scatter(
-                x = avgX,
-                y = avgY,
+                x = avgPowerX,
+                y = avgPowerY,
                 name = curr_device + ' Average Power',
             #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
             ))
