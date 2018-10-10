@@ -168,6 +168,15 @@ def create_figure(prev_fig, devices, power, net_traff):
             name = curr_device + ' Power',
         #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
         ))
+        if len(power[curr_device].index):
+            avgPowerY = [power[curr_device]['power_mw'].mean()]*2
+            avgPowerX = [power[curr_device]['time'].iloc[0], power[curr_device]['time'].iloc[-1]]
+            scatter_data.append(go.Scatter(
+                x = avgX,
+                y = avgY,
+                name = curr_device + ' Average Power',
+            #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+            ))
 
         # Append incoming, outgoing, and total network throughput
         df = net_traff[curr_device]
@@ -178,6 +187,16 @@ def create_figure(prev_fig, devices, power, net_traff):
                     x = dev_net_traff_in_dir['time'],
                     y = dev_net_traff_in_dir['total_throughput'],
                     name = curr_device + ' ' + data_direction + ' Throughput',
+                    yaxis = 'y2',
+                #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+                ))
+                avgY = [dev_net_traff_in_dir['total_throughput'].mean()]*2
+                avgX = [dev_net_traff_in_dir['time'].iloc[0], dev_net_traff_in_dir['time'].iloc[-1]]
+                print dev_net_traff_in_dir['time'].iloc[0]
+                scatter_data.append(go.Scatter(
+                    x = avgX,
+                    y = avgY,
+                    name = curr_device + ' ' + data_direction + ' Average Throughput',
                     yaxis = 'y2',
                 #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
                 ))
@@ -275,14 +294,27 @@ def get_time_range(use_time_range, interval, interval2, start_time_range, end_ti
     if use_time_range and interval2 and (start_time_range or end_time_range):
         h, m, s = extract_time_fields(interval2)
         time_delta = timedelta(hours=h, minutes=m, seconds=s)
-        print time_delta
 
+        # parse the time strings
         if start_time_range:
-            start_time_range = datetime.strptime(start_time_range, "%Y-%m-%d %H:%M:%S")
-            end_time_range = start_time_range + time_delta
+            start_time_range = start_time_range.strip()
+            if '/' in start_time_range:
+                start_time_range = datetime.strptime(start_time_range, "%m/%d/%Y %I:%M:%S %p")
+            else:
+                start_time_range = datetime.strptime(start_time_range, "%Y-%m-%d %H:%M:%S")
         elif end_time_range:
-            end_time_range = datetime.strptime(end_time_range, "%Y-%m-%d %H:%M:%S")
-            start_time_range = end_time_range - time_delta
+            end_time_range = end_time_range.strip()
+            if '/' in end_time_range:
+                end_time_range = datetime.strptime(end_time_range, "%m/%d/%Y %I:%M:%S %p")
+            else:
+                end_time_range = datetime.strptime(end_time_range, "%Y-%m-%d %H:%M:%S")
+
+        # if one of the fields are missing, calculate the other time range with time delta
+        if not (start_time_range and end_time_range):
+            if start_time_range:
+                end_time_range = start_time_range + time_delta
+            elif end_time_range:
+                start_time_range = end_time_range - time_delta
 
     elif not use_time_range:
         h, m, s = extract_time_fields(interval)
