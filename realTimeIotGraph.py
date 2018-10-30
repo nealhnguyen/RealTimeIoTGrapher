@@ -21,7 +21,7 @@ ip = {
     'Chromecast':       '192.168.12.77',
     'Echo Dot 2':       '192.168.12.79',
     'Echo Dot':         '192.168.12.92',
-    'Eufy Genie':       '192.168.12.145',
+    'Eufy Genie':       '192.168.12.147',
     'Eufy Genie 2':     '192.168.12.217',
     'Fire Stick':       '192.168.12.113',
     'Google Home':      '192.168.12.48',
@@ -74,6 +74,7 @@ def get_power_and_net_traff(devices, n):
         net_traff_frame = net_traff_query(db_connection, curr_device, start_time, end_time)
         net_traff[curr_device] = extract_throughput(net_traff_frame, curr_device)
 
+    db_connection.close()
     return power, net_traff
 
 def net_traff_query(db_connection, device, start_time, end_time):
@@ -89,7 +90,7 @@ def net_traff_query(db_connection, device, start_time, end_time):
 def extract_throughput(dataframe, device):
     throughput = defaultdict(lambda: {'in': 0, 'out': 0, 'total': 0})
 
-    for i, packet in dataframe.iterrows():
+    for _, packet in dataframe.iterrows():
         if packet['source'] == ip[device]:
             throughput[packet['time']]['out'] += packet['size']
         elif packet['destination'] == ip[device]:
@@ -152,6 +153,7 @@ def get_power_and_net_traff_in_range(devices, start_time, end_time):
 
         net_traff[curr_device] = throughput_query_in_range(db_connection, curr_device, start_time, end_time)
 
+    db_connection.close()
     return power, net_traff
 
 def create_figure(prev_fig, devices, power, net_traff):
@@ -160,53 +162,66 @@ def create_figure(prev_fig, devices, power, net_traff):
     #    print d
 
     scatter_data = []
+    annotations = []
     for curr_device in devices:
-        # Append power graph
-        scatter_data.append(go.Scatter(
-            x = power[curr_device]['time'],
-            y = power[curr_device]['power_mw'],
-            name = curr_device + ' Power',
-        #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
-        ))
-        if len(power[curr_device].index):
-            avgPowerY = [power[curr_device]['power_mw'].mean()]*2
-            avgPowerX = [power[curr_device]['time'].iloc[0], power[curr_device]['time'].iloc[-1]]
+        powerDF = power[curr_device]
+        if not powerDF.empty:
+            # Append power graph
             scatter_data.append(go.Scatter(
-                x = avgPowerX,
-                y = avgPowerY,
+                x = powerDF['time'],
+                y = powerDF['power_mw'],
+                name = curr_device + ' Power',
+            #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+            ))
+            avgPower = powerDF['power_mw'].mean()
+            startTime, endTime = powerDF['time'].iloc[0], powerDF['time'].iloc[-1]
+            scatter_data.append(go.Scatter(
+                x = [startTime, endTime],
+                y = [avgPower] * 2,
                 name = curr_device + ' Average Power',
             #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
             ))
 
+            maxPowerRow = powerDF['power_mw'].idxmax()
+            minPowerRow = powerDF['power_mw'].idxmin()
+            maxPower, minPower = powerDF['power_mw'].iloc[maxPowerRow], powerDF['power_mw'].iloc[minPowerRow]
+            maxPowerTime, minPowerTime = powerDF['time'].iloc[maxPowerRow], powerDF['time'].iloc[minPowerRow]
+            annotations += [
+                dict(x=startTime, y=avgPower, text=str(avgPower)),
+                dict(x=maxPowerTime, y=maxPower, text=str(maxPower)),
+                dict(x=minPowerTime, y=minPower, text=str(minPower))
+            ]
+
         # Append incoming, outgoing, and total network throughput
-        df = net_traff[curr_device]
-        for data_direction in ('incoming', 'outgoing', 'total'):
-            dev_net_traff_in_dir = df.loc[(df['type'] == data_direction) & (df['time'].notnull())]
-            if not dev_net_traff_in_dir.empty:
-                scatter_data.append(go.Scatter(
-                    x = dev_net_traff_in_dir['time'],
-                    y = dev_net_traff_in_dir['total_throughput'],
-                    name = curr_device + ' ' + data_direction + ' Throughput',
-                    yaxis = 'y2',
-                #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
-                ))
-                avgY = [dev_net_traff_in_dir['total_throughput'].mean()]*2
-                avgX = [dev_net_traff_in_dir['time'].iloc[0], dev_net_traff_in_dir['time'].iloc[-1]]
-                print dev_net_traff_in_dir['time'].iloc[0]
-                scatter_data.append(go.Scatter(
-                    x = avgX,
-                    y = avgY,
-                    name = curr_device + ' ' + data_direction + ' Average Throughput',
-                    yaxis = 'y2',
-                #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
-                ))
+        #df = net_traff[curr_device]
+        #for data_direction in ('incoming', 'outgoing', 'total'):
+        #    dev_net_traff_in_dir = df.loc[(df['type'] == data_direction) & (df['time'].notnull())]
+        #    if not dev_net_traff_in_dir.empty:
+        #        scatter_data.append(go.Scatter(
+        #            x = dev_net_traff_in_dir['time'],
+        #            y = dev_net_traff_in_dir['total_throughput'],
+        #            name = curr_device + ' ' + data_direction + ' Throughput',
+        #            yaxis = 'y2',
+        #        #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+        #        ))
+        #        #avgY = [dev_net_traff_in_dir['total_throughput'].mean()]*2
+        #        #avgX = [dev_net_traff_in_dir['time'].iloc[0], dev_net_traff_in_dir['time'].iloc[-1]]
+        #        #print dev_net_traff_in_dir['time'].iloc[0]
+        #        #scatter_data.append(go.Scatter(
+        #        #    x = avgX,
+        #        #    y = avgY,
+        #        #    name = curr_device + ' ' + data_direction + ' Average Throughput',
+        #        #    yaxis = 'y2',
+        #        ##    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+        #        #))
 
     layout = go.Layout(
         yaxis=dict(title='Power (mW)'),
         yaxis2=dict(title='Throughput (Bytes)', overlaying='y', side='right'),
         legend=dict(x=0, y=1.05, orientation='h'),
         margin=go.Margin(l=70, r=70, b=50, t=50, pad=4),
-        height=800
+        height=800,
+        annotations=annotations
     )
 
     return go.Figure(data=scatter_data, layout=layout)
@@ -257,6 +272,7 @@ def get_protocol_stats(devices, start_time_range, end_time_range):
 
         protocol_stats = protocol_stats.append(device_protocol_stats)
 
+    db_connection.close()
     return protocol_stats.sort_values(by='protocol')
 
 #endregion
@@ -326,10 +342,6 @@ def get_time_range(use_time_range, interval, interval2, start_time_range, end_ti
 
 def connect_to_ip_log_db():
     try:
-        #host="ciscoiot3.cdfsxn4jreun.us-west-2.rds.amazonaws.com"
-        #user = "cisco"
-        #passwd ="ciscoIOT985"
-        #db = "ip_log"
         db_connection = sql.connect(host, user, passwd, db)
 
         db_connection.ping(True)
@@ -337,7 +349,8 @@ def connect_to_ip_log_db():
         print "Missing 'loginCredentials' file, create one with login info"
         print "put the: host, user, password, and database"
         print "they all go on their own line with no modifiers"
-    except:
+    except Exception as exception:
+        print exception
         sys.exit("Couldn't connect to database")
 
     return db_connection
