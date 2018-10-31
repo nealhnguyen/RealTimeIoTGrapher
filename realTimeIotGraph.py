@@ -53,6 +53,7 @@ def power_query(db_connection, device, n):
 
     dataframe = pd.read_sql_query(sql_query, db_connection)
 
+    db_connection.close()
     return dataframe
 
 def extract_time_range(dataframe):
@@ -85,6 +86,7 @@ def net_traff_query(db_connection, device, start_time, end_time):
 
     dataframe = pd.read_sql_query(sql_query, db_connection)
 
+    db_connection.close()
     return dataframe
 
 def extract_throughput(dataframe, device):
@@ -125,6 +127,7 @@ def power_query_in_range(db_connection, device, start_time, end_time):
 
     dataframe = pd.read_sql_query(sql_query, db_connection)
 
+    db_connection.close()
     return dataframe
 
 def throughput_query_in_range(db_connection, device, start_time, end_time):
@@ -142,6 +145,7 @@ def throughput_query_in_range(db_connection, device, start_time, end_time):
 
     dataframe = pd.read_sql_query(sql_query, db_connection)
 
+    db_connection.close()
     return dataframe
 
 def get_power_and_net_traff_in_range(devices, start_time, end_time):
@@ -260,6 +264,7 @@ def protocol_query(db_connection, device, start_time, end_time):
 
     dataframe = pd.read_sql_query(sql_query, db_connection)
 
+    db_connection.close()
     return dataframe
 
 def get_protocol_stats(devices, start_time_range, end_time_range):
