@@ -5,6 +5,7 @@ import dash_core_components as dcc
 import dash_html_components as html
 import plotly
 import plotly.graph_objs as go
+import atexit
 #endregion
 
 #region general utility imports
@@ -63,6 +64,7 @@ def extract_time_range(dataframe):
 
 def get_power_and_net_traff(devices, n):
     db_connection = connect_to_ip_log_db()
+    atexit.register(db_connection.close)
     power = {}
     net_traff = {}
     for curr_device in devices:
@@ -146,6 +148,7 @@ def throughput_query_in_range(db_connection, device, start_time, end_time):
 
 def get_power_and_net_traff_in_range(devices, start_time, end_time):
     db_connection = connect_to_ip_log_db()
+    atexit.register(db_connection.close)
     power = {}
     net_traff = {}
     for curr_device in devices:
@@ -264,6 +267,7 @@ def protocol_query(db_connection, device, start_time, end_time):
 
 def get_protocol_stats(devices, start_time_range, end_time_range):
     db_connection = connect_to_ip_log_db()
+    atexit.register(db_connection.close)
     protocol_stats = pd.DataFrame()
 
     for device in devices:
@@ -273,6 +277,7 @@ def get_protocol_stats(devices, start_time_range, end_time_range):
         protocol_stats = protocol_stats.append(device_protocol_stats)
 
     db_connection.close()
+
     return protocol_stats.sort_values(by='protocol')
 
 #endregion
