@@ -46,77 +46,6 @@ user = credentials[1]
 passwd = credentials[2]
 db = credentials[3]
 
-#region Currently Unused Functions
-def power_query(db_connection, device, n):
-    sql_query = "SELECT power_mw, time FROM ip_log.power WHERE "
-    sql_query += "name='" + device + "' "
-    sql_query += "ORDER BY time DESC LIMIT " + str(n)
-
-    dataframe = pd.read_sql_query(sql_query, db_connection)
-
-    return dataframe
-
-def extract_time_range(dataframe):
-    # I'm assuming I queried for the power with the "DESC" keyword,
-    # thus latest time first, most recent time last
-    start_time, end_time = dataframe['time'].iloc[-1], dataframe['time'].iloc[0]
-    return start_time, end_time
-
-def get_power_and_net_traff(devices, n):
-    db_connection = connect_to_ip_log_db()
-    atexit.register(db_connection.close)
-    power = {}
-    net_traff = {}
-    for curr_device in devices:
-        # Setup power table for a device
-        power[curr_device] = power_query(db_connection, curr_device, n)
-
-        # Setup network traffic information for a device
-        start_time, end_time = extract_time_range(power[curr_device])
-        net_traff_frame = net_traff_query(db_connection, curr_device, start_time, end_time)
-        net_traff[curr_device] = extract_throughput(net_traff_frame, curr_device)
-
-    db_connection.close()
-    return power, net_traff
-
-def net_traff_query(db_connection, device, start_time, end_time):
-    start_time, end_time = str(start_time), str(end_time)
-    sql_query = "SELECT time, source, destination, size FROM ip_log.ip WHERE "
-    sql_query += "time BETWEEN '" + start_time + "' AND '" + end_time + "' AND "
-    sql_query += "(source = '" + ip[device] + "' OR destination = '" + ip[device] + "')"
-
-    dataframe = pd.read_sql_query(sql_query, db_connection)
-
-    return dataframe
-
-def extract_throughput(dataframe, device):
-    throughput = defaultdict(lambda: {'in': 0, 'out': 0, 'total': 0})
-
-    for _, packet in dataframe.iterrows():
-        if packet['source'] == ip[device]:
-            throughput[packet['time']]['out'] += packet['size']
-        elif packet['destination'] == ip[device]:
-            throughput[packet['time']]['in'] += packet['size']
-
-        throughput[packet['time']]['total'] += packet['size']
-
-    return pd.DataFrame.from_dict(throughput, orient='index')
-
-def preserve_trace_visibility(prev_data, curr_data):
-    hidden_traces = set()
-
-    for trace in prev_data:
-        if not trace['visible']:
-            hidden_traces.add(trace['name'])
-
-    print hidden_traces
-
-    for trace in curr_data:
-        if trace['name'] in hidden_traces:
-            trace['visible'] = False
-
-#endregion
-
 #region Functions for main network/power graph
 def power_query_in_range(db_connection, device, start_time, end_time):
     sql_query = """SELECT power_mw, time FROM ip_log.power
@@ -146,23 +75,30 @@ def throughput_query_in_range(db_connection, device, start_time, end_time):
 
     return dataframe
 
-def get_power_and_net_traff_in_range(devices, start_time, end_time):
+def get_power_and_net_traff_in_range(only_power, devices, start_time, end_time):
     db_connection = connect_to_ip_log_db()
-    atexit.register(db_connection.close)
-    power = {}
-    net_traff = {}
-    for curr_device in devices:
-        power[curr_device] = power_query_in_range(db_connection, curr_device, start_time, end_time)
+    try:
+        power = {}
+        net_traff = {}
+        for curr_device in devices:
+            power[curr_device] = power_query_in_range(db_connection, curr_device, start_time, end_time)
 
-        net_traff[curr_device] = throughput_query_in_range(db_connection, curr_device, start_time, end_time)
+            if not only_power:
+                net_traff[curr_device] = throughput_query_in_range(db_connection, curr_device, start_time, end_time)
+    finally:
+        db_connection.close()
 
-    db_connection.close()
     return power, net_traff
 
-def create_figure(prev_fig, devices, power, net_traff):
+def create_figure(sum_graph, prev_fig, devices, power, net_traff):
     #visibilities = {d['name']: d['visible'] for d in prev_fig['data']}
     #for d in prev_fig['data']:
     #    print d
+    if sum_graph:
+        devices = [', '.join(devices)]
+        power[devices[0]] = pd.concat(
+            power.values(), ignore_index=True
+        ).groupby(['time'], as_index=False).sum()
 
     scatter_data = []
     annotations = []
@@ -192,31 +128,31 @@ def create_figure(prev_fig, devices, power, net_traff):
             annotations += [
                 dict(x=startTime, y=avgPower, text=str(avgPower)),
                 dict(x=maxPowerTime, y=maxPower, text=str(maxPower)),
-                dict(x=minPowerTime, y=minPower, text=str(minPower))
+                dict(x=minPowerTime, y=minPower, text=str(minPower), ay=40)
             ]
 
         # Append incoming, outgoing, and total network throughput
-        #df = net_traff[curr_device]
-        #for data_direction in ('incoming', 'outgoing', 'total'):
-        #    dev_net_traff_in_dir = df.loc[(df['type'] == data_direction) & (df['time'].notnull())]
-        #    if not dev_net_traff_in_dir.empty:
-        #        scatter_data.append(go.Scatter(
-        #            x = dev_net_traff_in_dir['time'],
-        #            y = dev_net_traff_in_dir['total_throughput'],
-        #            name = curr_device + ' ' + data_direction + ' Throughput',
-        #            yaxis = 'y2',
-        #        #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
-        #        ))
-        #        #avgY = [dev_net_traff_in_dir['total_throughput'].mean()]*2
-        #        #avgX = [dev_net_traff_in_dir['time'].iloc[0], dev_net_traff_in_dir['time'].iloc[-1]]
-        #        #print dev_net_traff_in_dir['time'].iloc[0]
-        #        #scatter_data.append(go.Scatter(
-        #        #    x = avgX,
-        #        #    y = avgY,
-        #        #    name = curr_device + ' ' + data_direction + ' Average Throughput',
-        #        #    yaxis = 'y2',
-        #        ##    visible=visibilities[curr_device + ' Power'] or 'legendonly'
-        #        #))
+        if curr_device in net_traff:
+            df = net_traff[curr_device]
+            for data_direction in ('incoming', 'outgoing', 'total'):
+                dev_net_traff_in_dir = df.loc[(df['type'] == data_direction) & (df['time'].notnull())]
+                if not dev_net_traff_in_dir.empty:
+                    scatter_data.append(go.Scatter(
+                        x = dev_net_traff_in_dir['time'],
+                        y = dev_net_traff_in_dir['total_throughput'],
+                        name = curr_device + ' ' + data_direction + ' Throughput',
+                        yaxis = 'y2',
+                    #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+                    ))
+                    avgY = [dev_net_traff_in_dir['total_throughput'].mean()]*2
+                    avgX = [dev_net_traff_in_dir['time'].iloc[0], dev_net_traff_in_dir['time'].iloc[-1]]
+                    scatter_data.append(go.Scatter(
+                        x = avgX,
+                        y = avgY,
+                        name = curr_device + ' ' + data_direction + ' Average Throughput',
+                        yaxis = 'y2',
+                    #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
+                    ))
 
     layout = go.Layout(
         yaxis=dict(title='Power (mW)'),
@@ -266,17 +202,17 @@ def protocol_query(db_connection, device, start_time, end_time):
     return dataframe
 
 def get_protocol_stats(devices, start_time_range, end_time_range):
-    db_connection = connect_to_ip_log_db()
-    atexit.register(db_connection.close)
     protocol_stats = pd.DataFrame()
 
-    for device in devices:
-        device_protocol_stats = protocol_query(db_connection, device, start_time_range, end_time_range)
-        device_protocol_stats['protocol'] = device_protocol_stats['protocol'] + device
+    db_connection = connect_to_ip_log_db()
+    try:
+        for device in devices:
+            device_protocol_stats = protocol_query(db_connection, device, start_time_range, end_time_range)
+            device_protocol_stats['protocol'] = device_protocol_stats['protocol'] + device
 
-        protocol_stats = protocol_stats.append(device_protocol_stats)
-
-    db_connection.close()
+            protocol_stats = protocol_stats.append(device_protocol_stats)
+    finally:
+        db_connection.close()
 
     return protocol_stats.sort_values(by='protocol')
 
@@ -404,9 +340,11 @@ app.layout = html.Div([
     ),
     html.Div([
         dcc.Checklist(
-            id='use-time-range',
+            id='options',
             options=[
-                {'label': 'Use Time Range (Won\'t Update)', 'value': 'use_time_range'}
+                {'label': 'Use Time Range (Won\'t Update)', 'value': 'use_time_range'},
+                {'label': 'Sum the graph', 'value': 'sum_graph'},
+                {'label': 'Show Only Power', 'value': 'only_power'}
             ],
             values=[],
             labelStyle={'display': 'inline-block'}
@@ -427,7 +365,7 @@ app.layout = html.Div([
     dcc.Graph(id='protocol-graph'),
     dcc.Interval(
         id='interval-component',
-        interval=1.5*1000, # in milliseconds
+        interval=1*1000, # in milliseconds
         n_intervals=0
     ),
 ])
@@ -439,60 +377,60 @@ app.css.append_css({
 #region side callbacks for main graph
 #region Grey out live update fields when not in use
 @app.callback(Output('interval-header', 'style'),
-              [Input('use-time-range', 'values')])
-def toggle_interval_header_color(use_time_range):
-    if not use_time_range:
-        return {'color': 'black', 'display': 'inline-block', 'font-weight': 'bold', 'font-size': '20px', 'padding-right': '10px'}
-    elif use_time_range:
+              [Input('options', 'values')])
+def toggle_interval_header_color(options):
+    if 'use_time_range' in options:
         return {'color': 'grey', 'display': 'inline-block', 'font-weight': 'bold', 'font-size': '20px', 'padding-right': '10px'}
+    else:
+        return {'color': 'black', 'display': 'inline-block', 'font-weight': 'bold', 'font-size': '20px', 'padding-right': '10px'}
 @app.callback(Output('interval', 'style'),
-              [Input('use-time-range', 'values')])
-def toggle_interval_color(use_time_range):
-    if not use_time_range:
-        return {'color': 'black', 'display': 'inline-block'}
-    elif use_time_range:
+              [Input('options', 'values')])
+def toggle_interval_color(options):
+    if 'use_time_range' in options:
         return {'color': 'grey', 'display': 'inline-block'}
+    else:
+        return {'color': 'black', 'display': 'inline-block'}
 #endregion
 
 #region Grey out static fields when not in use
 @app.callback(Output('time-range-header', 'style'),
-              [Input('use-time-range', 'values')])
-def toggle_range_header_color(use_time_range):
-    if use_time_range:
+              [Input('options', 'values')])
+def toggle_range_header_color(options):
+    if 'use_time_range' in options:
         return {'color': 'black', 'display': 'inline-block', 'font-weight': 'bold', 'font-size': '20px', 'padding-right': '10px', 'padding-left': '30px'}
-    elif not use_time_range:
+    else:
         return {'color': 'grey', 'display': 'inline-block', 'font-weight': 'bold', 'font-size': '20px', 'padding-right': '10px', 'padding-left': '30px'}
 @app.callback(Output('start-time', 'style'),
-              [Input('use-time-range', 'values')])
-def toggle_start_range_color(use_time_range):
-    if use_time_range:
+              [Input('options', 'values')])
+def toggle_start_range_color(options):
+    if 'use_time_range' in options:
         return {'color': 'black', 'display': 'inline-block'}
-    elif not use_time_range:
+    else:
         return {'color': 'grey', 'display': 'inline-block'}
 @app.callback(Output('end-time', 'style'),
-              [Input('use-time-range', 'values')])
-def toggle_end_range_color(use_time_range):
-    if use_time_range:
+              [Input('options', 'values')])
+def toggle_end_range_color(options):
+    if 'use_time_range' in options:
         return {'color': 'black', 'display': 'inline-block'}
-    elif not use_time_range:
+    else:
         return {'color': 'grey', 'display': 'inline-block'}
 @app.callback(Output('interval2', 'style'),
-              [Input('use-time-range', 'values')])
-def toggle_interval2_color(use_time_range):
-    if use_time_range:
+              [Input('options', 'values')])
+def toggle_interval2_color(options):
+    if 'use_time_range' in options:
         return {'color': 'black', 'display': 'inline-block'}
-    elif not use_time_range:
+    else:
         return {'color': 'grey', 'display': 'inline-block'}
 #endregion
 
 #region Stop updating if interval is chosen
 @app.callback(Output('interval-component', 'interval'),
-              [Input('use-time-range', 'values')])
-def toggle_interval(use_time_range):
-    if use_time_range:
+              [Input('options', 'values')])
+def toggle_interval(options):
+    if 'use_time_range' in options:
         return 2147483647   # 2^31 - 1 (large value to disable updates)
-    elif not use_time_range:
-        return 1.5 * 1000   # regular time interval (every 1.5 seconds)
+    else:
+        return 1 * 1000   # regular time interval (every 1.5 seconds)
 #endregion
 #endregion
 
@@ -500,31 +438,24 @@ def toggle_interval(use_time_range):
 @app.callback(Output('live-update-graph', 'figure'),
              [Input('device-dropdown', 'value'),
               Input('interval-component', 'n_intervals'),
-              Input('use-time-range', 'values'),
+              Input('options', 'values'),
               Input('update-button', 'n_clicks')],
              [State('live-update-graph', 'figure'),
               State('start-time', 'value'),
               State('end-time', 'value'),
               State('interval', 'value'),
               State('interval2', 'value')])
-def update_graph_live(devices, n, use_time_range, clicks, prev_fig, start_time_range, end_time_range, interval, interval2):
+def update_graph_live(devices, n, options, clicks, prev_fig, start_time_range, end_time_range, interval, interval2):
+    use_time_range = 'use_time_range' in options
     start_time_range, end_time_range = get_time_range(use_time_range, interval, interval2, start_time_range, end_time_range)
 
-    power, net_traff = get_power_and_net_traff_in_range(devices, start_time_range, end_time_range)
+    only_power = 'only_power' in options
+    power, net_traff = get_power_and_net_traff_in_range(only_power, devices, start_time_range, end_time_range)
 
-    fig = create_figure(prev_fig, devices, power, net_traff)
+    sum_graph = 'sum_graph' in options
+    fig = create_figure(sum_graph, prev_fig, devices, power, net_traff)
 
     #if prev_fig: preserve_trace_visibility(prev_fig['data'], fig['data'])
-
-    # Print if any of the figures are empty
-    #for device in power.keys():
-    #    if power[device].empty:
-    #        print device + " power is empty"
-    #        print power[device]
-    #for device in net_traff.keys():
-    #    if net_traff[device].empty:
-    #        print device + " network traffic is empty"
-    #        print net_traff[device]
 
     return fig
 #endregion
@@ -533,15 +464,16 @@ def update_graph_live(devices, n, use_time_range, clicks, prev_fig, start_time_r
 @app.callback(Output('protocol-graph', 'figure'),
              [Input('device-dropdown', 'value'),
               Input('interval-component', 'n_intervals'),
-              Input('use-time-range', 'values'),
+              Input('options', 'values'),
               Input('update-button', 'n_clicks')],
              [State('live-update-graph', 'figure'),
               State('start-time', 'value'),
               State('end-time', 'value'),
               State('interval', 'value'),
               State('interval2', 'value')])
-def update_protocol_graph(devices, n, use_time_range, clicks, prev_fig, start_time_range, end_time_range, interval, interval2):
-    if devices:
+def update_protocol_graph(devices, n, options, clicks, prev_fig, start_time_range, end_time_range, interval, interval2):
+    if devices and 'only_power' not in options:
+        use_time_range = 'use_time_range' in options
         start_time_range, end_time_range = get_time_range(use_time_range, interval, interval2, start_time_range, end_time_range)
 
         protocol_stats = get_protocol_stats(devices, start_time_range, end_time_range)
@@ -550,7 +482,12 @@ def update_protocol_graph(devices, n, use_time_range, clicks, prev_fig, start_ti
 
         return fig
     else:
-        return None
+        layout = go.Layout(
+            barmode='stack',
+            legend=dict(x=0, y=1.05, orientation='h')
+        )
+
+        return go.Figure(data=[], layout=layout)
 #endregion
 
 if __name__ == '__main__':
