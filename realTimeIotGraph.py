@@ -94,7 +94,7 @@ def create_figure(sum_graph, prev_fig, devices, power, net_traff):
     #visibilities = {d['name']: d['visible'] for d in prev_fig['data']}
     #for d in prev_fig['data']:
     #    print d
-    if sum_graph:
+    if sum_graph and len(devices) > 0:
         devices = [', '.join(devices)]
         power[devices[0]] = pd.concat(
             power.values(), ignore_index=True
