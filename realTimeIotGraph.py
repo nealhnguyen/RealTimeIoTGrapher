@@ -5,7 +5,7 @@ import dash_core_components as dcc
 import dash_html_components as html
 import plotly
 import plotly.graph_objs as go
-import atexit
+import numpy as np
 #endregion
 
 #region general utility imports
@@ -15,6 +15,7 @@ import MySQLdb as sql
 import math
 import pandas as pd
 import sys
+import scipy
 #endregion
 
 #region IP Addresses of all devices we are tracking
@@ -90,15 +91,26 @@ def get_power_and_net_traff_in_range(only_power, devices, start_time, end_time):
 
     return power, net_traff
 
+def interpolate_power(devices, power):
+    for device in devices:
+        devicePower = power[device]
+        devicePower['time'] = pd.to_datetime(devicePower['time'])
+        devicePower.set_index('time', inplace=True)
+        devicePower = devicePower.resample('S').mean()
+
+        power[device] = devicePower.interpolate(method='time')
+
+    return power
+
 def create_figure(sum_graph, prev_fig, devices, power, net_traff):
     #visibilities = {d['name']: d['visible'] for d in prev_fig['data']}
     #for d in prev_fig['data']:
     #    print d
     if sum_graph and len(devices) > 0:
         devices = [', '.join(devices)]
-        power[devices[0]] = pd.concat(
-            power.values(), ignore_index=True
-        ).groupby(['time'], as_index=False).sum()
+        power[devices[0]] = pd.concat(power.values()).groupby(level=0).sum()
+        power[devices[0]].drop(power[devices[0]].tail(3).index,inplace=True)
+        power[devices[0]].drop(power[devices[0]].head(3).index,inplace=True)
 
     scatter_data = []
     annotations = []
@@ -107,13 +119,13 @@ def create_figure(sum_graph, prev_fig, devices, power, net_traff):
         if not powerDF.empty:
             # Append power graph
             scatter_data.append(go.Scatter(
-                x = powerDF['time'],
+                x = powerDF.index.tolist(),
                 y = powerDF['power_mw'],
                 name = curr_device + ' Power',
             #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
             ))
             avgPower = powerDF['power_mw'].mean()
-            startTime, endTime = powerDF['time'].iloc[0], powerDF['time'].iloc[-1]
+            startTime, endTime = powerDF.index[0], powerDF.index[-1]
             scatter_data.append(go.Scatter(
                 x = [startTime, endTime],
                 y = [avgPower] * 2,
@@ -121,14 +133,16 @@ def create_figure(sum_graph, prev_fig, devices, power, net_traff):
             #    visible=visibilities[curr_device + ' Power'] or 'legendonly'
             ))
 
-            maxPowerRow = powerDF['power_mw'].idxmax()
-            minPowerRow = powerDF['power_mw'].idxmin()
-            maxPower, minPower = powerDF['power_mw'].iloc[maxPowerRow], powerDF['power_mw'].iloc[minPowerRow]
-            maxPowerTime, minPowerTime = powerDF['time'].iloc[maxPowerRow], powerDF['time'].iloc[minPowerRow]
+            # powerDF.groupby(powerDF.index, sort=False)['power_mw'].max()
+            # maxPower, minPower = powerDF['power_mw'].iloc[0], powerDF['power_mw'].iloc[-1]
+            # maxPowerTime, minPowerTime = powerDF.index[0], powerDF.index[-1]
+            # annotations += [
+            #     dict(x=startTime, y=avgPower, text=str(avgPower)),
+            #     dict(x=maxPowerTime, y=maxPower, text=str(maxPower)),
+            #     dict(x=minPowerTime, y=minPower, text=str(minPower), ay=40)
+            # ]
             annotations += [
                 dict(x=startTime, y=avgPower, text=str(avgPower)),
-                dict(x=maxPowerTime, y=maxPower, text=str(maxPower)),
-                dict(x=minPowerTime, y=minPower, text=str(minPower), ay=40)
             ]
 
         # Append incoming, outgoing, and total network throughput
@@ -451,6 +465,8 @@ def update_graph_live(devices, n, options, clicks, prev_fig, start_time_range, e
 
     only_power = 'only_power' in options
     power, net_traff = get_power_and_net_traff_in_range(only_power, devices, start_time_range, end_time_range)
+
+    interpolate_power(devices, power)
 
     sum_graph = 'sum_graph' in options
     fig = create_figure(sum_graph, prev_fig, devices, power, net_traff)
