@@ -109,8 +109,8 @@ def create_figure(sum_graph, prev_fig, devices, power, net_traff):
     if sum_graph and len(devices) > 0:
         devices = [', '.join(devices)]
         power[devices[0]] = pd.concat(power.values()).groupby(level=0).sum()
-        power[devices[0]].drop(power[devices[0]].tail(3).index,inplace=True)
-        power[devices[0]].drop(power[devices[0]].head(3).index,inplace=True)
+        power[devices[0]].drop(power[devices[0]].tail(5).index,inplace=True)
+        power[devices[0]].drop(power[devices[0]].head(5).index,inplace=True)
 
     scatter_data = []
     annotations = []
